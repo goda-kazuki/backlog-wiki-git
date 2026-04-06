@@ -129,6 +129,45 @@ export class BacklogClient {
       `/wikis/${wikiId}/attachments/${attachmentId}`,
     );
   }
+
+  async uploadAttachment(
+    filename: string,
+    data: Buffer,
+  ): Promise<{ id: number; name: string; size: number }> {
+    const formData = new FormData();
+    formData.append("file", new Blob([new Uint8Array(data)]), filename);
+
+    const url = `${this.baseUrl}/space/attachment?apiKey=${this.apiKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Backlog API error: ${response.status} ${response.statusText}\n${body}`,
+      );
+    }
+
+    return response.json() as Promise<{ id: number; name: string; size: number }>;
+  }
+
+  async attachFilesToWiki(
+    wikiId: number,
+    attachmentIds: number[],
+  ): Promise<WikiAttachment[]> {
+    const params = new URLSearchParams();
+    for (const id of attachmentIds) {
+      params.append("attachmentId[]", String(id));
+    }
+
+    return this.request<WikiAttachment[]>(`/wikis/${wikiId}/attachments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
+  }
 }
 
 export function resolveApiKey(optionApiKey?: string): string {

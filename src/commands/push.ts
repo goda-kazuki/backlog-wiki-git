@@ -1,10 +1,11 @@
 import { readFile, readdir, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, extname } from "node:path";
 import { createInterface } from "node:readline";
-import { BacklogClient, resolveApiKey } from "../backlog-client.js";
+import { BacklogClient, resolveApiKey, type WikiAttachment } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
 import { convertLocalToBacklog } from "../content-converter.js";
-import { pathToWikiName } from "../path-converter.js";
+import { pathToWikiName, attachmentDir } from "../path-converter.js";
 
 interface PushOptions {
   apiKey?: string;
@@ -20,6 +21,33 @@ function confirm(message: string): Promise<boolean> {
       resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
     });
   });
+}
+
+async function uploadNewAttachments(
+  client: BacklogClient,
+  wikiId: number,
+  mdFilePath: string,
+  remoteAttachments: WikiAttachment[],
+): Promise<void> {
+  const attDir = attachmentDir(mdFilePath);
+  if (!existsSync(attDir)) return;
+
+  const remoteNames = new Set(remoteAttachments.map((a) => a.name));
+  const entries = await readdir(attDir);
+  const newFiles = entries.filter((name) => !remoteNames.has(name));
+
+  if (newFiles.length === 0) return;
+
+  const uploadedIds: number[] = [];
+  for (const filename of newFiles) {
+    const filePath = join(attDir, filename);
+    const data = await readFile(filePath);
+    console.log(`    添付アップロード: ${filename}`);
+    const uploaded = await client.uploadAttachment(filename, data);
+    uploadedIds.push(uploaded.id);
+  }
+
+  await client.attachFilesToWiki(wikiId, uploadedIds);
 }
 
 async function findMdFiles(dir: string): Promise<string[]> {
@@ -177,6 +205,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
 
       console.log(`  更新中: ${wikiName}`);
       await client.updateWiki(mapping.wiki_id, localContent);
+      await uploadNewAttachments(client, mapping.wiki_id, filePath, remote.attachments);
       pushed++;
     } else {
       // 新規ページの作成
@@ -190,6 +219,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
 
       console.log(`  新規作成: ${wikiName}`);
       const created = await client.createWiki(projectId, wikiName, rawContent);
+      await uploadNewAttachments(client, created.id, filePath, []);
 
       // マッピングに追加
       config.mappings.push({

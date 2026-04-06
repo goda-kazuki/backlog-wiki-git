@@ -52,10 +52,16 @@ npx backlog-wiki-sync pull
 
 ### Git → Backlog (push)
 
-`last_pushed_at` 以降にファイル更新日時 (mtime) が変わったファイルのみを Backlog に反映します。push 前に Backlog 側の内容と比較し、差分がない場合はスキップします。
+`last_pushed_at` 以降にファイル更新日時 (mtime) が変わったファイルのみを Backlog に反映します。push 前に対象ファイル一覧を表示し、確認プロンプトで `y` を入力すると実行されます。Backlog 側の内容と比較し、差分がない場合はスキップします。
 
 ```bash
 npx backlog-wiki-sync push
+```
+
+確認プロンプトをスキップするには `-y` を付けます。
+
+```bash
+npx backlog-wiki-sync push -y
 ```
 
 Backlog 側に Git にない変更がある場合は警告してスキップします。強制上書きするには `--force` を付けます。

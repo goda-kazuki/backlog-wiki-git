@@ -1,6 +1,6 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { BacklogClient, resolveApiKey } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
 import { convertBacklogToLocal } from "../content-converter.js";
@@ -90,14 +90,31 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     await writeFile(mdPath, convertedContent, "utf-8");
 
     // 添付ファイルを保存
+    const attDir = attachmentDir(mdPath);
     if (wiki.attachments.length > 0) {
-      const attDir = attachmentDir(mdPath);
       await mkdir(attDir, { recursive: true });
 
       for (const att of wiki.attachments) {
         console.log(`    添付: ${att.name}`);
         const { data } = await client.getAttachment(wiki.id, att.id);
         await writeFile(`${attDir}/${att.name}`, Buffer.from(data));
+      }
+    }
+
+    // Backlog 側にないローカル添付ファイルを削除
+    if (existsSync(attDir)) {
+      const remoteNames = new Set(wiki.attachments.map((a) => a.name));
+      const localFiles = await readdir(attDir, { withFileTypes: true });
+      for (const entry of localFiles) {
+        if (entry.isFile() && !remoteNames.has(entry.name)) {
+          console.log(`    添付削除: ${entry.name}`);
+          await rm(join(attDir, entry.name));
+        }
+      }
+      // ディレクトリが空になったら削除
+      const remaining = await readdir(attDir);
+      if (remaining.length === 0) {
+        await rm(attDir, { recursive: true });
       }
     }
 

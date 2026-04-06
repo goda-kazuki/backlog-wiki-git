@@ -34,13 +34,13 @@ describe("pathToWikiName", () => {
 });
 
 describe("attachmentDir", () => {
-  it("Markdown ファイルと同名のディレクトリパスを返す", () => {
-    expect(attachmentDir("docs/Home.md")).toBe("docs/Home");
+  it("Markdown ファイルに対応する .attachments ディレクトリパスを返す", () => {
+    expect(attachmentDir("docs/Home.md", "docs")).toBe("docs/.attachments/Home");
   });
 
   it("ネストされたパスでも正しく動作する", () => {
     expect(
-      attachmentDir("docs/設計/パラメータシート/Amazon SQS.md"),
-    ).toBe("docs/設計/パラメータシート/Amazon SQS");
+      attachmentDir("docs/設計/パラメータシート/Amazon SQS.md", "docs"),
+    ).toBe("docs/.attachments/設計/パラメータシート/Amazon SQS");
   });
 });

@@ -14,9 +14,10 @@ async function syncAttachments(
   client: BacklogClient,
   wikiId: number,
   mdPath: string,
+  docsDir: string,
   remoteAttachments: { id: number; name: string }[],
 ): Promise<void> {
-  const attDir = attachmentDir(mdPath);
+  const attDir = attachmentDir(mdPath, docsDir);
 
   // リモートに添付ファイルがある場合: ダウンロード
   if (remoteAttachments.length > 0) {
@@ -115,7 +116,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
       if (existsSync(mapping.path)) {
         await rm(mapping.path);
       }
-      const oldAttDir = attachmentDir(mapping.path);
+      const oldAttDir = attachmentDir(mapping.path, config.docs_dir);
       if (existsSync(oldAttDir)) {
         await rm(oldAttDir, { recursive: true });
       }
@@ -126,7 +127,8 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     // コンテンツ内の添付ファイル参照パスを変換
     const convertedContent = convertBacklogToLocal(
       wiki.content ?? "",
-      wiki.name,
+      mdPath,
+      config.docs_dir,
       wiki.attachments,
       config.space,
     );
@@ -136,7 +138,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     await writeFile(mdPath, convertedContent, "utf-8");
 
     // 添付ファイルを同期
-    await syncAttachments(client, wiki.id, mdPath, wiki.attachments);
+    await syncAttachments(client, wiki.id, mdPath, config.docs_dir, wiki.attachments);
 
     if (!mapping) {
       newMappings.push({
@@ -155,7 +157,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     (m) =>
       !processedWikiIds.has(m.wiki_id) &&
       m.sync !== "git-to-backlog" &&
-      existsSync(attachmentDir(m.path)),
+      existsSync(attachmentDir(m.path, config.docs_dir)),
   );
 
   if (attachmentSyncTargets.length > 0) {
@@ -163,7 +165,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
 
     for (const mapping of attachmentSyncTargets) {
       const wiki = await client.getWiki(mapping.wiki_id);
-      await syncAttachments(client, wiki.id, mapping.path, wiki.attachments);
+      await syncAttachments(client, wiki.id, mapping.path, config.docs_dir, wiki.attachments);
     }
   }
 

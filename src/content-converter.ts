@@ -1,15 +1,14 @@
-import { basename, dirname, relative } from "node:path";
+import { dirname, relative } from "node:path";
+import { attachmentDir } from "./path-converter.js";
 
 /**
  * Backlog Wiki のコンテンツ内の添付ファイル参照をローカルの相対パスに変換する (pull 時)
  *
  * Backlog Wiki の添付ファイル参照形式:
  *   ![image](https://{space}/api/v2/wikis/{wikiId}/attachments/{attachmentId})
- *   [file](https://{space}/api/v2/wikis/{wikiId}/attachments/{attachmentId})
  *
  * ローカルの参照形式:
- *   ![image](WikiName/filename.png)
- *   [file](WikiName/filename.txt)
+ *   ![image](.attachments/Home/filename.png)
  */
 
 interface AttachmentInfo {
@@ -22,22 +21,20 @@ interface AttachmentInfo {
  */
 export function convertBacklogToLocal(
   content: string,
-  wikiName: string,
+  mdFilePath: string,
+  docsDir: string,
   attachments: AttachmentInfo[],
   space: string,
 ): string {
-  // 添付ファイル ID → ファイル名のマップを作成
   const attachmentMap = new Map<number, string>();
   for (const att of attachments) {
     attachmentMap.set(att.id, att.name);
   }
 
-  // Wiki 名の最後のセグメントがディレクトリ名になる
-  const localDir = basename(wikiName);
+  const attDir = attachmentDir(mdFilePath, docsDir);
+  const mdDir = dirname(mdFilePath);
+  const relAttDir = relative(mdDir, attDir);
 
-  // Markdown リンク/画像の URL を変換
-  // ![alt](https://space/api/v2/wikis/123/attachments/456)
-  // [text](https://space/api/v2/wikis/123/attachments/456)
   const urlPattern = new RegExp(
     `(!?\\[[^\\]]*\\])\\(https?://${escapeRegex(space)}/api/v2/wikis/\\d+/attachments/(\\d+)\\)`,
     "g",
@@ -47,7 +44,7 @@ export function convertBacklogToLocal(
     const attId = parseInt(attIdStr, 10);
     const filename = attachmentMap.get(attId);
     if (filename) {
-      return `${prefix}(${localDir}/${filename})`;
+      return `${prefix}(${relAttDir}/${filename})`;
     }
     return _match;
   });
@@ -59,22 +56,22 @@ export function convertBacklogToLocal(
 export function convertLocalToBacklog(
   content: string,
   mdFilePath: string,
+  docsDir: string,
   wikiId: number,
   attachments: AttachmentInfo[],
   space: string,
 ): string {
-  // ファイル名 → 添付ファイル ID のマップ
   const nameToId = new Map<string, number>();
   for (const att of attachments) {
     nameToId.set(att.name, att.id);
   }
 
-  // Wiki名の最後のセグメント（ディレクトリ名）
-  const mdBase = basename(mdFilePath, ".md");
+  const attDir = attachmentDir(mdFilePath, docsDir);
+  const mdDir = dirname(mdFilePath);
+  const relAttDir = relative(mdDir, attDir);
 
-  // ローカル相対パスのパターン: ![alt](DirName/filename.png) or [text](DirName/filename.txt)
   const localPattern = new RegExp(
-    `(!?\\[[^\\]]*\\])\\(${escapeRegex(mdBase)}/([^)]+)\\)`,
+    `(!?\\[[^\\]]*\\])\\(${escapeRegex(relAttDir)}/([^)]+)\\)`,
     "g",
   );
 

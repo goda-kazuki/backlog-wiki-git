@@ -1,4 +1,4 @@
-import { join, relative, dirname, basename, extname } from "node:path";
+import { join, relative, extname } from "node:path";
 
 /**
  * Wiki 名をローカルファイルパスに変換する
@@ -23,11 +23,12 @@ export function pathToWikiName(filePath: string, docsDir: string): string {
 
 /**
  * 添付ファイルの保存先ディレクトリを取得する
- * 例: "docs/設計/パラメータシート/Amazon SQS.md"
- *   → "docs/設計/パラメータシート/Amazon SQS/"
+ * 例: "docs/設計/パラメータシート/Amazon SQS.md", docsDir="docs"
+ *   → "docs/.attachments/設計/パラメータシート/Amazon SQS/"
  */
-export function attachmentDir(mdFilePath: string): string {
-  const dir = dirname(mdFilePath);
-  const base = basename(mdFilePath, ".md");
-  return join(dir, base);
+export function attachmentDir(mdFilePath: string, docsDir: string): string {
+  const rel = relative(docsDir, mdFilePath);
+  const ext = extname(rel);
+  const withoutExt = ext === ".md" ? rel.slice(0, -ext.length) : rel;
+  return join(docsDir, ".attachments", withoutExt);
 }

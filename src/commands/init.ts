@@ -51,7 +51,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
 
     // 添付ファイルを保存
     if (wiki.attachments.length > 0) {
-      const attDir = attachmentDir(mdPath);
+      const attDir = attachmentDir(mdPath, docsDir);
       await mkdir(attDir, { recursive: true });
 
       for (const att of wiki.attachments) {

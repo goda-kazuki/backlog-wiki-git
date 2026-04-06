@@ -27,9 +27,10 @@ async function uploadNewAttachments(
   client: BacklogClient,
   wikiId: number,
   mdFilePath: string,
+  docsDir: string,
   remoteAttachments: WikiAttachment[],
 ): Promise<number> {
-  const attDir = attachmentDir(mdFilePath);
+  const attDir = attachmentDir(mdFilePath, docsDir);
   if (!existsSync(attDir)) return 0;
 
   const remoteNames = new Set(remoteAttachments.map((a) => a.name));
@@ -94,7 +95,7 @@ async function getChangedFiles(
 
     // 添付ディレクトリ内のファイルの mtime チェック
     if (!hasChange) {
-      const attDir = attachmentDir(mapping.path);
+      const attDir = attachmentDir(mapping.path, docsDir);
       try {
         const entries = await readdir(attDir, { withFileTypes: true });
         for (const entry of entries) {
@@ -200,6 +201,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
       const localContent = convertLocalToBacklog(
         rawContent,
         filePath,
+        config.docs_dir,
         mapping.wiki_id,
         remote.attachments,
         config.space,
@@ -235,7 +237,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
       }
 
       // 添付ファイルアップロード
-      const attachmentCount = await uploadNewAttachments(client, mapping.wiki_id, filePath, remote.attachments);
+      const attachmentCount = await uploadNewAttachments(client, mapping.wiki_id, filePath, config.docs_dir, remote.attachments);
 
       if (!contentChanged && attachmentCount === 0) {
         console.log(`  差分なし: ${wikiName}`);
@@ -262,7 +264,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
       console.log(`  新規作成: ${wikiName}`);
       const created = await client.createWiki(projectId, wikiName, rawContent);
       console.log(`    → https://${config.space}/alias/wiki/${created.id}`);
-      await uploadNewAttachments(client, created.id, filePath, []);
+      await uploadNewAttachments(client, created.id, filePath, config.docs_dir, []);
 
       // マッピングに追加
       config.mappings.push({

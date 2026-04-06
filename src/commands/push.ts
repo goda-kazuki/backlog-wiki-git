@@ -233,6 +233,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
       }
 
       console.log(`  更新中: ${wikiName}`);
+      console.log(`    → https://${config.space}/alias/wiki/${mapping.wiki_id}`);
       await client.updateWiki(mapping.wiki_id, localContent);
       await uploadNewAttachments(client, mapping.wiki_id, filePath, remote.attachments);
       pushed++;
@@ -248,6 +249,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
 
       console.log(`  新規作成: ${wikiName}`);
       const created = await client.createWiki(projectId, wikiName, rawContent);
+      console.log(`    → https://${config.space}/alias/wiki/${created.id}`);
       await uploadNewAttachments(client, created.id, filePath, []);
 
       // マッピングに追加

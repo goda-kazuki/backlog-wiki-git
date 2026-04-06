@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { join, extname } from "node:path";
 import { createInterface } from "node:readline";
 import { BacklogClient, resolveApiKey } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
@@ -21,13 +22,30 @@ function confirm(message: string): Promise<boolean> {
   });
 }
 
+async function findMdFiles(dir: string): Promise<string[]> {
+  const results: string[] = [];
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...(await findMdFiles(fullPath)));
+    } else if (extname(entry.name) === ".md") {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
 async function getChangedFiles(
   since: string,
+  docsDir: string,
   mappings: Mapping[],
 ): Promise<string[]> {
   const sinceDate = new Date(since);
   const changed: string[] = [];
+  const knownPaths = new Set(mappings.map((m) => m.path));
 
+  // マッピング済みファイルのチェック
   for (const mapping of mappings) {
     try {
       const fileStat = await stat(mapping.path);
@@ -37,6 +55,18 @@ async function getChangedFiles(
     } catch {
       // ファイルが存在しない場合はスキップ
     }
+  }
+
+  // docs/ 配下の未登録ファイル（新規追加）を検出
+  try {
+    const allMdFiles = await findMdFiles(docsDir);
+    for (const filePath of allMdFiles) {
+      if (!knownPaths.has(filePath)) {
+        changed.push(filePath);
+      }
+    }
+  } catch {
+    // docs ディレクトリが存在しない場合はスキップ
   }
 
   return changed;
@@ -56,7 +86,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
 
   // 上の条件分岐で両方 null のケースは除外済み
   const since = (config.last_pushed_at ?? config.last_pulled_at) as string;
-  const changedFiles = await getChangedFiles(since, config.mappings);
+  const changedFiles = await getChangedFiles(since, config.docs_dir, config.mappings);
 
   if (changedFiles.length === 0) {
     console.log("push 対象の変更ファイルはありません。");

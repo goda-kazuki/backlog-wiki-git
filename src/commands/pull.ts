@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { BacklogClient, resolveApiKey } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
@@ -56,7 +57,25 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     console.log(`  取得中: ${summary.name}`);
     const wiki = await client.getWiki(summary.id);
 
-    const mdPath = mapping?.path ?? wikiNameToPath(wiki.name, config.docs_dir);
+    const expectedPath = wikiNameToPath(wiki.name, config.docs_dir);
+    let mdPath = mapping?.path ?? expectedPath;
+
+    // リネーム検知: マッピングのパスと Wiki 名から導出したパスが異なる場合
+    if (mapping && mapping.path !== expectedPath) {
+      console.log(`  リネーム検知: ${mapping.path} → ${expectedPath}`);
+      // 旧ファイルを削除
+      if (existsSync(mapping.path)) {
+        await rm(mapping.path);
+      }
+      // 旧添付ファイルディレクトリを削除
+      const oldAttDir = attachmentDir(mapping.path);
+      if (existsSync(oldAttDir)) {
+        await rm(oldAttDir, { recursive: true });
+      }
+      // マッピングのパスを更新
+      mapping.path = expectedPath;
+      mdPath = expectedPath;
+    }
 
     // コンテンツ内の添付ファイル参照パスを変換
     const convertedContent = convertBacklogToLocal(

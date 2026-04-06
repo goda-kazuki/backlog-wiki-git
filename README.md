@@ -52,7 +52,7 @@ npx backlog-wiki-sync pull
 
 ### Git → Backlog (push)
 
-Git 側で変更されたファイルのみを Backlog に反映します。
+`last_pushed_at` 以降にファイル更新日時 (mtime) が変わったファイルのみを Backlog に反映します。push 前に Backlog 側の内容と比較し、差分がない場合はスキップします。
 
 ```bash
 npx backlog-wiki-sync push

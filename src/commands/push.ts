@@ -1,5 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { readFile, stat } from "node:fs/promises";
 import { BacklogClient, resolveApiKey } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
 import { convertLocalToBacklog } from "../content-converter.js";
@@ -10,19 +9,25 @@ interface PushOptions {
   force: boolean;
 }
 
-function getChangedFiles(since: string, docsDir: string): string[] {
-  try {
-    const output = execSync(
-      `git log --since="${since}" --diff-filter=ACMR --name-only --pretty=format: -- "${docsDir}"`,
-      { encoding: "utf-8" },
-    );
-    return output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && line.endsWith(".md"));
-  } catch {
-    return [];
+async function getChangedFiles(
+  since: string,
+  mappings: Mapping[],
+): Promise<string[]> {
+  const sinceDate = new Date(since);
+  const changed: string[] = [];
+
+  for (const mapping of mappings) {
+    try {
+      const fileStat = await stat(mapping.path);
+      if (fileStat.mtime > sinceDate) {
+        changed.push(mapping.path);
+      }
+    } catch {
+      // ファイルが存在しない場合はスキップ
+    }
   }
+
+  return changed;
 }
 
 export async function pushCommand(options: PushOptions): Promise<void> {
@@ -39,7 +44,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
 
   // 上の条件分岐で両方 null のケースは除外済み
   const since = (config.last_pushed_at ?? config.last_pulled_at) as string;
-  const changedFiles = getChangedFiles(since, config.docs_dir);
+  const changedFiles = await getChangedFiles(since, config.mappings);
 
   if (changedFiles.length === 0) {
     console.log("push 対象の変更ファイルはありません。");

@@ -73,15 +73,41 @@ async function getChangedFiles(
   const changed: string[] = [];
   const knownPaths = new Set(mappings.map((m) => m.path));
 
-  // マッピング済みファイルのチェック
+  // マッピング済みファイルのチェック（.md 本体 + 添付ディレクトリ）
   for (const mapping of mappings) {
+    if (changed.includes(mapping.path)) continue;
+
+    let hasChange = false;
+
+    // .md ファイル自体の mtime チェック
     try {
       const fileStat = await stat(mapping.path);
       if (fileStat.mtime > sinceDate) {
-        changed.push(mapping.path);
+        hasChange = true;
       }
     } catch {
       // ファイルが存在しない場合はスキップ
+    }
+
+    // 添付ディレクトリ内のファイルの mtime チェック
+    if (!hasChange) {
+      const attDir = attachmentDir(mapping.path);
+      try {
+        const entries = await readdir(attDir);
+        for (const name of entries) {
+          const fileStat = await stat(join(attDir, name));
+          if (fileStat.mtime > sinceDate) {
+            hasChange = true;
+            break;
+          }
+        }
+      } catch {
+        // ディレクトリが存在しない場合はスキップ
+      }
+    }
+
+    if (hasChange) {
+      changed.push(mapping.path);
     }
   }
 

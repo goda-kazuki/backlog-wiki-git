@@ -33,8 +33,10 @@ async function uploadNewAttachments(
   if (!existsSync(attDir)) return;
 
   const remoteNames = new Set(remoteAttachments.map((a) => a.name));
-  const entries = await readdir(attDir);
-  const newFiles = entries.filter((name) => !remoteNames.has(name));
+  const entries = await readdir(attDir, { withFileTypes: true });
+  const newFiles = entries
+    .filter((e) => e.isFile() && !remoteNames.has(e.name))
+    .map((e) => e.name);
 
   if (newFiles.length === 0) return;
 
@@ -93,9 +95,10 @@ async function getChangedFiles(
     if (!hasChange) {
       const attDir = attachmentDir(mapping.path);
       try {
-        const entries = await readdir(attDir);
-        for (const name of entries) {
-          const fileStat = await stat(join(attDir, name));
+        const entries = await readdir(attDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          const fileStat = await stat(join(attDir, entry.name));
           if (fileStat.mtime > sinceDate) {
             hasChange = true;
             break;

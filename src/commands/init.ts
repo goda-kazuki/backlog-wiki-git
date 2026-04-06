@@ -69,12 +69,13 @@ export async function initCommand(options: InitOptions): Promise<void> {
     });
   }
 
+  const now = new Date().toISOString();
   const config: Config = {
     space,
     project_key: options.project,
     docs_dir: docsDir,
-    last_pulled_at: new Date().toISOString(),
-    last_pushed_at: null,
+    last_pulled_at: now,
+    last_pushed_at: now,
     mappings,
   };
 

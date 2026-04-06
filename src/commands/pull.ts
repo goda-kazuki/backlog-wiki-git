@@ -119,7 +119,9 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     console.log(`\n${newMappings.length} 件の新規ページをマッピングに追加しました。`);
   }
 
-  config.last_pulled_at = new Date().toISOString();
+  const now = new Date().toISOString();
+  config.last_pulled_at = now;
+  config.last_pushed_at = now;
   await saveConfig(config);
 
   console.log(`\n完了: ${pulled} 件取得, ${skipped} 件スキップ`);

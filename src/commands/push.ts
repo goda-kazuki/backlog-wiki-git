@@ -28,9 +28,9 @@ async function uploadNewAttachments(
   wikiId: number,
   mdFilePath: string,
   remoteAttachments: WikiAttachment[],
-): Promise<void> {
+): Promise<number> {
   const attDir = attachmentDir(mdFilePath);
-  if (!existsSync(attDir)) return;
+  if (!existsSync(attDir)) return 0;
 
   const remoteNames = new Set(remoteAttachments.map((a) => a.name));
   const entries = await readdir(attDir, { withFileTypes: true });
@@ -38,7 +38,7 @@ async function uploadNewAttachments(
     .filter((e) => e.isFile() && !remoteNames.has(e.name))
     .map((e) => e.name);
 
-  if (newFiles.length === 0) return;
+  if (newFiles.length === 0) return 0;
 
   const uploadedIds: number[] = [];
   for (const filename of newFiles) {
@@ -50,6 +50,7 @@ async function uploadNewAttachments(
   }
 
   await client.attachFilesToWiki(wikiId, uploadedIds);
+  return newFiles.length;
 }
 
 async function findMdFiles(dir: string): Promise<string[]> {
@@ -225,17 +226,28 @@ export async function pushCommand(options: PushOptions): Promise<void> {
         }
       }
 
-      // 差分がない場合はスキップ
-      if (remote.content === localContent) {
+      // コンテンツ更新
+      const contentChanged = remote.content !== localContent;
+      if (contentChanged) {
+        console.log(`  更新中: ${wikiName}`);
+        console.log(`    → https://${config.space}/alias/wiki/${mapping.wiki_id}`);
+        await client.updateWiki(mapping.wiki_id, localContent);
+      }
+
+      // 添付ファイルアップロード
+      const attachmentCount = await uploadNewAttachments(client, mapping.wiki_id, filePath, remote.attachments);
+
+      if (!contentChanged && attachmentCount === 0) {
         console.log(`  差分なし: ${wikiName}`);
         skipped++;
         continue;
       }
 
-      console.log(`  更新中: ${wikiName}`);
-      console.log(`    → https://${config.space}/alias/wiki/${mapping.wiki_id}`);
-      await client.updateWiki(mapping.wiki_id, localContent);
-      await uploadNewAttachments(client, mapping.wiki_id, filePath, remote.attachments);
+      if (!contentChanged && attachmentCount > 0) {
+        console.log(`  添付ファイルのみ更新: ${wikiName}`);
+        console.log(`    → https://${config.space}/alias/wiki/${mapping.wiki_id}`);
+      }
+
       pushed++;
     } else {
       // 新規ページの作成

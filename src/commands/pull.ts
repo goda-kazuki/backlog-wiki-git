@@ -10,6 +10,56 @@ interface PullOptions {
   apiKey?: string;
 }
 
+async function syncAttachments(
+  client: BacklogClient,
+  wikiId: number,
+  mdPath: string,
+  remoteAttachments: { id: number; name: string }[],
+): Promise<void> {
+  const attDir = attachmentDir(mdPath);
+
+  // リモートに添付ファイルがある場合: ダウンロード
+  if (remoteAttachments.length > 0) {
+    await mkdir(attDir, { recursive: true });
+
+    const localFiles = await safeReaddir(attDir);
+    const localNames = new Set(localFiles);
+
+    for (const att of remoteAttachments) {
+      if (!localNames.has(att.name)) {
+        console.log(`    添付ダウンロード: ${att.name}`);
+        const { data } = await client.getAttachment(wikiId, att.id);
+        await writeFile(`${attDir}/${att.name}`, Buffer.from(data));
+      }
+    }
+  }
+
+  // ローカルにあってリモートにないファイルを削除
+  if (existsSync(attDir)) {
+    const remoteNames = new Set(remoteAttachments.map((a) => a.name));
+    const localEntries = await readdir(attDir, { withFileTypes: true });
+    for (const entry of localEntries) {
+      if (entry.isFile() && !remoteNames.has(entry.name)) {
+        console.log(`    添付削除: ${entry.name}`);
+        await rm(join(attDir, entry.name));
+      }
+    }
+    // ディレクトリが空になったら削除
+    const remaining = await readdir(attDir);
+    if (remaining.length === 0) {
+      await rm(attDir, { recursive: true });
+    }
+  }
+}
+
+async function safeReaddir(dir: string): Promise<string[]> {
+  try {
+    return await readdir(dir);
+  } catch {
+    return [];
+  }
+}
+
 export async function pullCommand(options: PullOptions): Promise<void> {
   const config = await loadConfig();
   const apiKey = resolveApiKey(options.apiKey);
@@ -27,13 +77,6 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     ? wikiList.filter((w) => new Date(w.updated) > lastPulledAt)
     : wikiList;
 
-  if (updatedPages.length === 0) {
-    console.log("更新されたページはありません。");
-    return;
-  }
-
-  console.log(`${updatedPages.length} 件の更新があります。`);
-
   // マッピングの wiki_id セットを作成
   const mappingByWikiId = new Map<number, Mapping>();
   for (const m of config.mappings) {
@@ -43,14 +86,20 @@ export async function pullCommand(options: PullOptions): Promise<void> {
   let pulled = 0;
   let skipped = 0;
   const newMappings: Mapping[] = [];
+  const processedWikiIds = new Set<number>();
+
+  // 1. 更新されたページのコンテンツ + 添付ファイルを同期
+  if (updatedPages.length > 0) {
+    console.log(`${updatedPages.length} 件の更新があります。`);
+  }
 
   for (const summary of updatedPages) {
     const mapping = mappingByWikiId.get(summary.id);
 
-    // git-to-backlog のページはスキップ
     if (mapping?.sync === "git-to-backlog") {
       console.log(`  スキップ (git-to-backlog): ${summary.name}`);
       skipped++;
+      processedWikiIds.add(summary.id);
       continue;
     }
 
@@ -60,19 +109,16 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     const expectedPath = wikiNameToPath(wiki.name, config.docs_dir);
     let mdPath = mapping?.path ?? expectedPath;
 
-    // リネーム検知: マッピングのパスと Wiki 名から導出したパスが異なる場合
+    // リネーム検知
     if (mapping && mapping.path !== expectedPath) {
       console.log(`  リネーム検知: ${mapping.path} → ${expectedPath}`);
-      // 旧ファイルを削除
       if (existsSync(mapping.path)) {
         await rm(mapping.path);
       }
-      // 旧添付ファイルディレクトリを削除
       const oldAttDir = attachmentDir(mapping.path);
       if (existsSync(oldAttDir)) {
         await rm(oldAttDir, { recursive: true });
       }
-      // マッピングのパスを更新
       mapping.path = expectedPath;
       mdPath = expectedPath;
     }
@@ -89,36 +135,9 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     await mkdir(dirname(mdPath), { recursive: true });
     await writeFile(mdPath, convertedContent, "utf-8");
 
-    // 添付ファイルを保存
-    const attDir = attachmentDir(mdPath);
-    if (wiki.attachments.length > 0) {
-      await mkdir(attDir, { recursive: true });
+    // 添付ファイルを同期
+    await syncAttachments(client, wiki.id, mdPath, wiki.attachments);
 
-      for (const att of wiki.attachments) {
-        console.log(`    添付: ${att.name}`);
-        const { data } = await client.getAttachment(wiki.id, att.id);
-        await writeFile(`${attDir}/${att.name}`, Buffer.from(data));
-      }
-    }
-
-    // Backlog 側にないローカル添付ファイルを削除
-    if (existsSync(attDir)) {
-      const remoteNames = new Set(wiki.attachments.map((a) => a.name));
-      const localFiles = await readdir(attDir, { withFileTypes: true });
-      for (const entry of localFiles) {
-        if (entry.isFile() && !remoteNames.has(entry.name)) {
-          console.log(`    添付削除: ${entry.name}`);
-          await rm(join(attDir, entry.name));
-        }
-      }
-      // ディレクトリが空になったら削除
-      const remaining = await readdir(attDir);
-      if (remaining.length === 0) {
-        await rm(attDir, { recursive: true });
-      }
-    }
-
-    // 新規ページの場合はマッピングに追加
     if (!mapping) {
       newMappings.push({
         wiki_id: wiki.id,
@@ -127,7 +146,25 @@ export async function pullCommand(options: PullOptions): Promise<void> {
       });
     }
 
+    processedWikiIds.add(summary.id);
     pulled++;
+  }
+
+  // 2. 更新対象外のページでも、ローカルに添付ディレクトリがあれば添付ファイルを同期
+  const attachmentSyncTargets = config.mappings.filter(
+    (m) =>
+      !processedWikiIds.has(m.wiki_id) &&
+      m.sync !== "git-to-backlog" &&
+      existsSync(attachmentDir(m.path)),
+  );
+
+  if (attachmentSyncTargets.length > 0) {
+    console.log(`\n添付ファイルの同期チェック: ${attachmentSyncTargets.length} 件`);
+
+    for (const mapping of attachmentSyncTargets) {
+      const wiki = await client.getWiki(mapping.wiki_id);
+      await syncAttachments(client, wiki.id, mapping.path, wiki.attachments);
+    }
   }
 
   // 新規マッピングを追加

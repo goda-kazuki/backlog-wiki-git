@@ -32,6 +32,7 @@ program
   .description("Git → Backlog（差分のみ反映）")
   .option("--api-key <key>", "Backlog API キー")
   .option("--force", "Backlog 側の変更を無視して強制上書き", false)
+  .option("-y, --yes", "確認プロンプトをスキップ", false)
   .action(pushCommand);
 
 program.parse();

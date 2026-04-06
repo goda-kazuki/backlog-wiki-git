@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import { BacklogClient, resolveApiKey } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
 import { convertLocalToBacklog } from "../content-converter.js";
@@ -7,6 +8,17 @@ import { pathToWikiName } from "../path-converter.js";
 interface PushOptions {
   apiKey?: string;
   force: boolean;
+  yes: boolean;
+}
+
+function confirm(message: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(message, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
+    });
+  });
 }
 
 async function getChangedFiles(
@@ -52,6 +64,17 @@ export async function pushCommand(options: PushOptions): Promise<void> {
   }
 
   console.log(`${changedFiles.length} 件の変更ファイルを検出しました。`);
+  for (const f of changedFiles) {
+    console.log(`  - ${f}`);
+  }
+
+  if (!options.yes) {
+    const ok = await confirm("\nBacklog に push しますか？ (y/N): ");
+    if (!ok) {
+      console.log("キャンセルしました。");
+      return;
+    }
+  }
 
   // マッピングをパスで引けるように
   const mappingByPath = new Map<string, Mapping>();

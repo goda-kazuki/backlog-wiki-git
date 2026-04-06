@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { BacklogClient, resolveApiKey } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
+import { convertBacklogToLocal } from "../content-converter.js";
 import { wikiNameToPath, attachmentDir } from "../path-converter.js";
 
 interface PullOptions {
@@ -57,9 +58,17 @@ export async function pullCommand(options: PullOptions): Promise<void> {
 
     const mdPath = mapping?.path ?? wikiNameToPath(wiki.name, config.docs_dir);
 
+    // コンテンツ内の添付ファイル参照パスを変換
+    const convertedContent = convertBacklogToLocal(
+      wiki.content,
+      wiki.name,
+      wiki.attachments,
+      config.space,
+    );
+
     // Markdown ファイルを保存
     await mkdir(dirname(mdPath), { recursive: true });
-    await writeFile(mdPath, wiki.content, "utf-8");
+    await writeFile(mdPath, convertedContent, "utf-8");
 
     // 添付ファイルを保存
     if (wiki.attachments.length > 0) {

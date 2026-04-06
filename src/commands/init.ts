@@ -47,7 +47,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
 
     // Markdown ファイルを保存
     await mkdir(dirname(mdPath), { recursive: true });
-    await writeFile(mdPath, wiki.content, "utf-8");
+    await writeFile(mdPath, wiki.content ?? "", "utf-8");
 
     // 添付ファイルを保存
     if (wiki.attachments.length > 0) {

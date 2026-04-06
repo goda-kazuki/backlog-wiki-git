@@ -60,7 +60,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
 
     // コンテンツ内の添付ファイル参照パスを変換
     const convertedContent = convertBacklogToLocal(
-      wiki.content,
+      wiki.content ?? "",
       wiki.name,
       wiki.attachments,
       config.space,

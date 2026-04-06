@@ -77,9 +77,10 @@ function validate(config: unknown): Config {
 
 export async function loadConfig(): Promise<Config> {
   if (!existsSync(CONFIG_FILE)) {
-    throw new Error(
+    console.error(
       `${CONFIG_FILE} が見つかりません。先に backlog-wiki-sync init を実行してください。`,
     );
+    process.exit(1);
   }
 
   const raw = await readFile(CONFIG_FILE, "utf-8");

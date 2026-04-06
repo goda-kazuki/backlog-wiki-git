@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { BacklogClient, resolveApiKey } from "../backlog-client.js";
 import { loadConfig, saveConfig, type Mapping } from "../config.js";
+import { convertLocalToBacklog } from "../content-converter.js";
 import { pathToWikiName } from "../path-converter.js";
 
 interface PushOptions {
@@ -72,12 +73,21 @@ export async function pushCommand(options: PushOptions): Promise<void> {
       continue;
     }
 
-    const localContent = await readFile(filePath, "utf-8");
+    const rawContent = await readFile(filePath, "utf-8");
     const wikiName = pathToWikiName(filePath, config.docs_dir);
 
     if (mapping) {
       // 既存ページの更新
       const remote = await client.getWiki(mapping.wiki_id);
+
+      // ローカルの相対パスを Backlog API URL に変換
+      const localContent = convertLocalToBacklog(
+        rawContent,
+        filePath,
+        mapping.wiki_id,
+        remote.attachments,
+        config.space,
+      );
 
       // 競合チェック: Backlog 側の内容がローカルと異なるか確認
       if (!options.force && remote.content !== localContent) {
@@ -121,7 +131,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
       }
 
       console.log(`  新規作成: ${wikiName}`);
-      const created = await client.createWiki(projectId, wikiName, localContent);
+      const created = await client.createWiki(projectId, wikiName, rawContent);
 
       // マッピングに追加
       config.mappings.push({
